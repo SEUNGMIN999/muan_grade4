@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#08745e" />
+    <title>무안초 4학년 교담 시수 기록부</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; background: #eef6f2; }
+      body { font-family: Pretendard, "Noto Sans KR", Arial, sans-serif; }
+      iframe { display: block; width: 100%; height: 100%; border: 0; }
+      .offline { position: fixed; inset: 0; display: none; place-items: center; padding: 24px; text-align: center; color: #17372f; background: #eef6f2; }
+      .offline div { max-width: 420px; padding: 28px; border: 1px solid #dbe8e2; border-radius: 20px; background: #fff; box-shadow: 0 12px 36px rgba(31,87,70,.12); }
+      .offline h1 { margin: 0 0 10px; font-size: 22px; }
+      .offline p { margin: 0; color: #61766f; line-height: 1.6; }
+      body.is-offline .offline { display: grid; }
+      body.is-offline iframe { display: none; }
+    </style>
+  </head>
+  <body>
+    <iframe
+      src="https://muan-grade4-subject-hours.seungzzang11.chatgpt.site"
+      title="무안초 4학년 교담 시수 기록부"
+      allow="clipboard-read; clipboard-write"
+    ></iframe>
+    <section class="offline">
+      <div>
+        <h1>인터넷 연결이 필요합니다</h1>
+        <p>연결 상태를 확인한 뒤 이 HTML 파일을 다시 열어 주세요.</p>
+      </div>
+    </section>
+    <script>
+      const updateConnection = () => document.body.classList.toggle("is-offline", !navigator.onLine);
+      window.addEventListener("online", updateConnection);
+      window.addEventListener("offline", updateConnection);
+      updateConnection();
+    </script>
+  </body>
+</html>
