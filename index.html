@@ -56,7 +56,7 @@ Error generating stack: `+e.message+`
       /* 달력 가독성 및 한 화면 표시 개선 */
       .shell { padding-left: 64px; padding-right: 64px; }
       .calendarPanel { overflow: visible; }
-      .calendarGrid { grid-auto-rows: 208px; align-items: stretch; }
+      .calendarGrid { grid-auto-rows: 172px; align-items: stretch; }
       .sideMonthButton { position: fixed; top: 50%; width: 40px; height: 58px; }
       .sideMonthButton.previous { left: 12px; }
       .sideMonthButton.next { right: 12px; }
@@ -88,7 +88,7 @@ Error generating stack: `+e.message+`
         .shell { padding-left: 10px; padding-right: 10px; }
         .calendarPanel { overflow: hidden; }
         .sideMonthButton { display: none; }
-        .calendarGrid { grid-auto-rows: 208px; }
+        .calendarGrid { grid-auto-rows: 172px; }
         .day { height: 100% !important; min-height: 0; padding: 4px; }
         .day.today { padding: 4px; }
         .dateRow { height: auto; min-height: 25px; }
@@ -162,12 +162,29 @@ Error generating stack: `+e.message+`
       .periodRow,
       .periodRow:has(.externalBlock) {
         box-sizing: border-box;
-        height: 22px !important;
-        min-height: 22px !important;
+        height: auto !important;
+        min-height: 0 !important;
+      }
+      .periodRow:has(.emptyPeriod) {
+        display: grid !important;
+        grid-template-columns: 35px minmax(0, 1fr);
+      }
+      .day:not(.holidayDay):not(.noClassDay) {
+        display: flex;
+        flex-direction: column;
+      }
+      .day:not(.holidayDay):not(.noClassDay) .dateRow {
+        flex: 0 0 25px;
+      }
+      .day:not(.holidayDay):not(.noClassDay) .periodList {
+        display: grid;
+        grid-template-rows: repeat(6, minmax(0, 1fr));
+        flex: 1;
+        min-height: 0;
       }
       .periodItems.hasExternal {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-auto-rows: 22px;
+        grid-auto-rows: 19px;
         align-content: center;
       }
       .periodItems .scheduleBlock,
@@ -176,10 +193,10 @@ Error generating stack: `+e.message+`
         width: 100%;
         min-width: 0;
         max-width: none;
-        height: 22px !important;
-        min-height: 22px !important;
-        max-height: 22px !important;
-        padding: 2px 6px !important;
+        height: 19px !important;
+        min-height: 19px !important;
+        max-height: 19px !important;
+        padding: 1px 6px !important;
         border-radius: 7px;
         align-items: center;
       }
