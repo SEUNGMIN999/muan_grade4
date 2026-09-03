@@ -90,6 +90,59 @@ Error generating stack: `+e.message+`
         .day.today { padding: 4px; }
         .dateRow { height: auto; min-height: 25px; }
       }
+      /* 휴일은 교시표 대신 휴일 이름만 강조 */
+      .holidayDay .periodList,
+      .noClassDay .periodList {
+        display: none !important;
+      }
+      .holidayDay .dateRow,
+      .noClassDay .dateRow {
+        position: relative;
+        width: 100%;
+        height: 100% !important;
+        min-height: 100%;
+        margin: 0;
+        padding: 0;
+        justify-content: center;
+        align-items: center;
+        overflow: visible;
+      }
+      .holidayDay .dateButton,
+      .noClassDay .dateButton {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        z-index: 2;
+      }
+      .holidayDay .holidayBadge,
+      .noClassDay .eventBlock.noClassEvent {
+        width: auto;
+        max-width: calc(100% - 24px);
+        height: auto;
+        margin: 0;
+        padding: 8px 12px;
+        color: #c52f2f;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid #e9a0a0;
+        border-radius: 12px;
+        font-size: 20px;
+        font-weight: 950;
+        line-height: 1.25;
+        white-space: normal;
+        text-align: center;
+        overflow: visible;
+      }
+      .noClassDay .eventBlock:not(.noClassEvent) {
+        display: none !important;
+      }
+      @media (max-width: 640px) {
+        .holidayDay .holidayBadge,
+        .noClassDay .eventBlock.noClassEvent {
+          max-width: calc(100% - 12px);
+          padding: 6px 8px;
+          font-size: 16px;
+        }
+      }
     </style>
     <script>
       (() => {
