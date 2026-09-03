@@ -53,6 +53,43 @@ Error generating stack: `+e.message+`
         .sideMonthButton.previous { left: 3px; }
         .sideMonthButton.next { right: 3px; }
       }
+      /* 달력 가독성 및 한 화면 표시 개선 */
+      .shell { padding-left: 64px; padding-right: 64px; }
+      .calendarPanel { overflow: visible; }
+      .sideMonthButton { position: fixed; top: 50%; width: 40px; height: 58px; }
+      .sideMonthButton.previous { left: 12px; }
+      .sideMonthButton.next { right: 12px; }
+      .day {
+        box-sizing: border-box;
+        height: 184px;
+        padding: 5px;
+      }
+      .day.today {
+        border: 3px solid #e04444 !important;
+        padding: 4px;
+        box-shadow: 0 0 0 2px rgba(224, 68, 68, 0.13) !important;
+      }
+      .day.today::before { inset: 3px; border-radius: 4px; }
+      .dateRow { height: 25px; margin-bottom: 1px; }
+      .dateRow .dateButton { height: 24px; }
+      .periodRow { min-height: 20px; }
+      .periodLabel { font-size: 8px; }
+      .periodItems { gap: 1px; padding: 1px 3px; }
+      .periodItems .scheduleBlock,
+      .externalBlock {
+        height: 18px;
+        min-height: 18px;
+        padding-top: 1px;
+        padding-bottom: 1px;
+      }
+      @media (max-width: 760px) {
+        .shell { padding-left: 10px; padding-right: 10px; }
+        .calendarPanel { overflow: hidden; }
+        .sideMonthButton { display: none; }
+        .day { height: auto !important; min-height: 162px; padding: 4px; }
+        .day.today { padding: 4px; }
+        .dateRow { height: auto; min-height: 25px; }
+      }
     </style>
     <script>
       (() => {
