@@ -159,7 +159,17 @@ Error generating stack: `+e.message+`
         font-size: 14px;
       }
       /* 교담 수업과 외부교육 블록 크기 통일 */
-      .periodItems.hasExternal { grid-auto-rows: 22px; }
+      .periodRow,
+      .periodRow:has(.externalBlock) {
+        box-sizing: border-box;
+        height: 22px !important;
+        min-height: 22px !important;
+      }
+      .periodItems.hasExternal {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-auto-rows: 22px;
+        align-content: center;
+      }
       .periodItems .scheduleBlock,
       .periodItems .externalBlock {
         box-sizing: border-box;
