@@ -206,6 +206,82 @@ Error generating stack: `+e.message+`
       .periodItems .scheduleBlock span {
         line-height: 1.1;
       }
+      /* 모든 교시 줄의 라벨과 내용 시작선을 동일하게 유지 */
+      .periodRow,
+      .periodRow:has(.emptyPeriod),
+      .periodRow:has(.externalBlock) {
+        display: grid !important;
+        grid-template-columns: 35px minmax(0, 1fr) !important;
+        align-items: stretch;
+      }
+      .periodLabel {
+        display: flex !important;
+        width: auto !important;
+        min-width: 0;
+        padding: 0;
+      }
+      .periodItems {
+        min-width: 0;
+        overflow: hidden;
+      }
+      /* 진행이 끝난 외부교육 */
+      .externalBlock.externalCompleted {
+        color: #fff !important;
+        background: linear-gradient(90deg, #24679f, #174f7d) !important;
+        border-color: #174f7d !important;
+        box-shadow: 0 2px 6px rgba(23, 79, 125, 0.28);
+      }
+      .externalBlock.externalCompleted span,
+      .externalBlock.externalCompleted em {
+        color: #fff !important;
+      }
+      .externalBlock.externalCompleted b,
+      .externalBlock.externalCompleted .externalClassBadges i {
+        color: #fff !important;
+        background: rgba(255, 255, 255, 0.16) !important;
+        border-color: rgba(255, 255, 255, 0.5) !important;
+      }
+      /* 외부교육: 예정은 연분홍, 완료는 진한 빨강 */
+      .periodItems .externalBlock:not(.externalCompleted) {
+        color: #a83a46 !important;
+        background: linear-gradient(90deg, #fff0f2, #ffe4e8) !important;
+        border-color: #efadb6 !important;
+        box-shadow: 0 2px 5px rgba(174, 55, 70, 0.12);
+      }
+      .periodItems .externalBlock:not(.externalCompleted) b {
+        color: #fff !important;
+        background: #d86a78 !important;
+      }
+      .periodItems .externalBlock:not(.externalCompleted) span,
+      .periodItems .externalBlock:not(.externalCompleted) em {
+        color: #9f3340 !important;
+      }
+      .periodItems .externalBlock:not(.externalCompleted) .externalClassBadges i {
+        color: #b33d4b !important;
+        background: #fff8f9 !important;
+        border-color: #e9a4ad !important;
+      }
+      .externalBlock.externalCompleted {
+        color: #fff !important;
+        background: linear-gradient(90deg, #dc4b59, #a92332) !important;
+        border-color: #9e1f2d !important;
+        box-shadow: 0 2px 7px rgba(158, 31, 45, 0.3);
+      }
+      @media (max-width: 640px) {
+        .dateRow .eventBlock {
+          display: inline-flex !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+        }
+        .periodRow:has(.externalBlock) {
+          display: grid !important;
+        }
+        .periodItems .externalBlock {
+          display: flex !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+        }
+      }
     </style>
     <script>
       (() => {
@@ -312,13 +388,48 @@ Error generating stack: `+e.message+`
           );
         };
 
+        const markCompletedExternalBlocks = () => {
+          const parts = Object.fromEntries(
+            new Intl.DateTimeFormat("en-CA", {
+              timeZone: "Asia/Seoul",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+            }).formatToParts(new Date()).map(({ type, value }) => [type, value]),
+          );
+          const currentDate = `${parts.year}-${parts.month}-${parts.day}`;
+          const currentMinutes = Number(parts.hour) * 60 + Number(parts.minute);
+          const periodEnd = { 1: 580, 2: 630, 3: 690, 4: 740, 5: 785, 6: 850 };
+          const year = document.querySelector(".calendarHead h2")?.textContent.match(/(\d{4})년/)?.[1];
+          if (!year) return;
+
+          document.querySelectorAll(".day:not(.blank)").forEach((day) => {
+            const dateMatch = day.querySelector(".dateButton")?.getAttribute("aria-label")
+              ?.match(/(\d{1,2})월\s*(\d{1,2})일/);
+            if (!dateMatch) return;
+            const date = `${year}-${String(dateMatch[1]).padStart(2, "0")}-${String(dateMatch[2]).padStart(2, "0")}`;
+            day.querySelectorAll(".externalBlock").forEach((block) => {
+              const period = Number(block.closest(".periodRow")?.querySelector(".periodLabel")?.textContent.match(/\d+/)?.[0]);
+              const completed = date < currentDate
+                || (date === currentDate && currentMinutes >= (periodEnd[period] ?? Infinity));
+              block.classList.toggle("externalCompleted", completed);
+            });
+          });
+        };
+
         const actionObserver = new MutationObserver(() => {
           addDateActions();
           addSideMonthControls();
+          markCompletedExternalBlocks();
         });
         actionObserver.observe(document.getElementById("root"), { childList: true, subtree: true });
         addDateActions();
         addSideMonthControls();
+        markCompletedExternalBlocks();
+        window.setInterval(markCompletedExternalBlocks, 60000);
 
         document.addEventListener("click", (event) => {
           const clickedMenu = event.target.closest?.(".actionMenu");
