@@ -12,7 +12,8 @@
   const empty = () => ({hours:{},completion:{},schedule:{},events:{},external:{}});
   const id = () => crypto.randomUUID().replaceAll('-','');
   let apply, server = null, draft = null, busy = false, conflict = false, loading = false, timer, token = '';
-  let status, retryButton, loadButton, importButton, legacyButton, fileInput;
+  let status, retryButton, loadButton, importButton, legacyButton, fileInput, bar, actions;
+  let adminMode = false;
   let stateMessage = '공용 저장소 연결 준비 중';
   let stateKind = 'warning';
   const readLocal = (key, store=localStorage) => { try { return store.getItem(key); } catch { return null; } };
@@ -48,10 +49,12 @@
     return data;
   }
   function configured() { return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url); }
-  function canEdit() { return !!(server && token && !busy && !conflict && !loading && configured()); }
+  function canEdit() { return !!(adminMode && server && token && !busy && !conflict && !loading && configured()); }
   function show(message, kind='warning') { stateMessage=message; stateKind=kind; paint(); }
   function paint() {
     if (!status) return;
+    bar.hidden=!adminMode && stateKind!=='error';
+    actions.hidden=!adminMode;
     status.textContent=stateMessage; status.dataset.kind=stateKind;
     retryButton.hidden=!configured(); retryButton.disabled=busy || loading;
     retryButton.textContent=draft ? '미전송 기록 다시 보내기' : '새로 확인';
@@ -165,9 +168,9 @@
     } catch(e){show(e.message,'error');}finally{loading=false;paint();}
   }
   function mount() {
-    const bar=document.createElement('section');bar.className='cloudBar';bar.setAttribute('aria-label','공용 저장 상태');
+    bar=document.createElement('section');bar.className='cloudBar';bar.hidden=true;bar.setAttribute('aria-label','공용 저장 상태');
     status=document.createElement('p');status.setAttribute('role','status');bar.append(status);
-    const actions=document.createElement('div');actions.className='cloudActions';bar.append(actions);
+    actions=document.createElement('div');actions.className='cloudActions';actions.hidden=true;bar.append(actions);
     function button(text,fn){const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=()=>Promise.resolve().then(fn).catch(e=>show(e.message,'error'));actions.append(b);return b;}
     retryButton=button('새로 확인',()=>draft?save():refresh());
     loadButton=button('최신 기록 불러오기',loadLatest);
@@ -184,6 +187,8 @@
     // 저장 중 추가 수정을 막아 응답 이후의 변경이 사라지는 것을 방지합니다.
     ['click','keydown','pointerdown','drop','input','change','submit'].forEach(type=>document.addEventListener(type,e=>{
       if(!e.target.closest?.('#root') || e.target.closest('.loginModal') || e.target.closest('.adminButton'))return;
+      // 월 이동은 저장 데이터를 바꾸지 않으므로 통신 상태와 관계없이 허용합니다.
+      if(e.target.closest('.calendarHead button,.sideMonthButton'))return;
       if(busy || loading || conflict && e.target.closest('form,.dateDrawer,.scheduleBlock,.eventBlock,.externalBlock,.actionMenu,.activityDetailModal')){e.preventDefault();e.stopImmediatePropagation();}
     },true));
     window.addEventListener('beforeunload',e=>{if(draft || busy){e.preventDefault();e.returnValue='';}});
@@ -191,8 +196,9 @@
     window.setInterval(()=>{if(!document.hidden && !document.querySelector('.modalBackdrop,.dateDrawerBackdrop') && !draft)refresh();},60000);
   }
   window.MuanCloud={
+    setAdminMode(value){adminMode=!!value;paint();},
     connect(fn){apply=fn;if(server)notify();else if(draft){try{apply(copy(valid(draft.data)));}catch(e){show(e.message,'error');}}else refresh();return()=>{apply=null;};},change,login,
-    logout(){const old=token;token='';try{sessionStorage.removeItem(sessionKey);}catch{}if(old)post({action:'logout',token:old}).catch(()=>{});paint();},
+    logout(){const old=token;token='';adminMode=false;try{sessionStorage.removeItem(sessionKey);}catch{}if(old)post({action:'logout',token:old}).catch(()=>{});paint();},
     authMessage(message){show(message,'error');},canEdit,valid
   };
   document.addEventListener('DOMContentLoaded',mount);
