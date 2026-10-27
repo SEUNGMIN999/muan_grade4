@@ -1,205 +1,171 @@
-/* Apps Script 공용 저장소 연결. 원래 localStorage 키는 복구용으로 보존합니다. */
+/* 무안초 4학년 기록부 Firebase 어댑터: 기존 MuanCloud API 유지 */
 (() => {
-  'use strict';
-  const config = window.MUAN_CLOUD_CONFIG || {};
-  const url = config.url || '';
-  const fields = ['hours','completion','schedule','events','external'];
-  const legacyKeys = ['muan-grade4-subject-hours-v1','muan-grade4-completion-overrides-v1','muan-grade4-schedule-overrides-v1','muan-grade4-events-v1','muan-grade4-external-education-v1'];
-  const draftKey = 'muan-grade4-cloud-draft-v1:' + url;
-  const sessionKey = 'muan-grade4-cloud-token:' + url;
-  const copy = x => JSON.parse(JSON.stringify(x));
-  const equal = (a,b) => JSON.stringify(a) === JSON.stringify(b);
-  const empty = () => ({hours:{},completion:{},schedule:{},events:{},external:{}});
-  const id = () => crypto.randomUUID().replaceAll('-','');
-  let apply, server = null, draft = null, busy = false, conflict = false, loading = false, timer, token = '';
-  let status, retryButton, loadButton, importButton, legacyButton, fileInput, bar, actions;
-  let adminMode = false;
-  let stateMessage = '공용 저장소 연결 준비 중';
-  let stateKind = 'warning';
-  const readLocal = (key, store=localStorage) => { try { return store.getItem(key); } catch { return null; } };
-  token = readLocal(sessionKey, sessionStorage) || '';
-  try { draft = JSON.parse(readLocal(draftKey)); } catch { /* 원문은 삭제하지 않음 */ }
-  if (draft) { conflict = true; stateMessage = '이 컴퓨터에 미전송 기록이 있습니다. 백업 후 다시 보내거나 최신 기록을 불러오세요.'; }
-  function valid(data) {
-    if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).length !== 5 || JSON.stringify(data).length > 1000000) throw Error('전체 백업 형식이 올바르지 않습니다.');
-    for (const field of fields) {
-      const group = data[field];
-      if (!group || typeof group !== 'object' || Array.isArray(group)) throw Error('백업 항목이 빠졌습니다.');
-      for (const [date,value] of Object.entries(group)) {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < '2026-08-21' || date > '2027-01-08') throw Error('학기 범위 밖의 기록입니다.');
-        if (field === 'hours' || field === 'completion') {
-          if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('시수 형식이 잘못되었습니다.');
-          for (const [key,v] of Object.entries(value)) {
-            if (!/^4-[1-4]\|(체육|영어|사회)$/.test(key) || (field === 'hours' ? !Number.isInteger(v) || v < 0 || v > 1000 : typeof v !== 'boolean')) throw Error('시수 값이 잘못되었습니다.');
-          }
-        } else {
-          if (!Array.isArray(value) || value.length > 200) throw Error('일정 형식이 잘못되었습니다.');
-          for (const item of value) {
-            if (!item || typeof item !== 'object' || Array.isArray(item)) throw Error('일정 형식이 잘못되었습니다.');
-            if (field === 'schedule') {
-              if (!/^4-[1-4]$/.test(item.cls) || !['체육','영어','사회'].includes(item.subject) || !Number.isInteger(item.period) || item.period < 1 || item.period > 6) throw Error('시간표 형식이 잘못되었습니다.');
-            } else {
-              if (typeof item.id !== 'string' || !item.id || typeof item.title !== 'string' || !item.title.trim() || item.title.length > 500) throw Error('행사 형식이 잘못되었습니다.');
-              if (field === 'external' && (!Number.isInteger(item.period) || item.period < 1 || item.period > 6 || !Array.isArray(item.classes) || !item.classes.length || item.classes.some(c => !/^4-[1-4]$/.test(c)))) throw Error('외부교육 형식이 잘못되었습니다.');
-            }
-          }
-        }
-      }
-    }
-    return data;
-  }
-  function configured() { return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url); }
-  function canEdit() { return !!(adminMode && server && token && !busy && !conflict && !loading && configured()); }
-  function show(message, kind='warning') { stateMessage=message; stateKind=kind; paint(); }
-  function paint() {
-    if (!status) return;
-    bar.hidden=!adminMode && stateKind!=='error';
-    actions.hidden=!adminMode;
-    status.textContent=stateMessage; status.dataset.kind=stateKind;
-    retryButton.hidden=!configured(); retryButton.disabled=busy || loading;
-    retryButton.textContent=draft ? '미전송 기록 다시 보내기' : '새로 확인';
-    loadButton.hidden=!draft; loadButton.disabled=busy || loading;
-    importButton.disabled=!canEdit(); legacyButton.disabled=!canEdit();
-  }
-  function notify() { if (apply && server) apply(copy(server.data)); }
-  function readRemote() {
-    return new Promise((resolve,reject) => {
-      const callback='muanRead_'+id(), script=document.createElement('script');
-      let timeout;
-      const cleanup=()=>{clearTimeout(timeout);script.remove();delete window[callback];};
-      window[callback]=result=>{cleanup(); result.ok ? resolve(result) : reject(Object.assign(Error(result.message), {code:result.code}));};
-      script.onerror=()=>{cleanup();reject(Error('공용 저장소에 연결하지 못했습니다. 인터넷과 배포 설정을 확인해주세요.'));};
-      timeout=setTimeout(()=>{cleanup();reject(Error('공용 저장소 응답이 늦습니다. 잠시 후 다시 확인해주세요.'));},45000);
-      script.src=url+'?callback='+callback+'&time='+Date.now(); document.head.append(script);
-    });
-  }
-  // form POST + postMessage로 저장 완료 응답을 받습니다. no-cors의 불투명 응답을 성공으로 간주하지 않습니다.
-  function post(payload) {
-    return new Promise((resolve,reject)=>{
-      const nonce=id(), frame=document.createElement('iframe'), form=document.createElement('form'), input=document.createElement('input');
-      frame.name='muanPost_'+nonce; frame.hidden=true; frame.title='공용 기록 전송'; form.hidden=true;
-      form.method='POST';form.action=url;form.target=frame.name;
-      input.type='hidden';input.name='payload';input.value=JSON.stringify({...payload,nonce,origin:location.origin});form.append(input);
-      let timeout;
-      const cleanup=()=>{clearTimeout(timeout);window.removeEventListener('message',listener);form.remove();frame.remove();};
-      const listener=event=>{
-        if (!/^https:\/\/(?:[a-z0-9-]+\.)?script\.googleusercontent\.com$/.test(event.origin) && !/^https:\/\/[a-z0-9-]+-script\.googleusercontent\.com$/.test(event.origin)) return;
-        if (event.data?.channel !== 'muan-grade4' || event.data.nonce !== nonce) return;
-        const result=event.data.result;cleanup();
-        result?.ok ? resolve(result) : reject(Object.assign(Error(result?.message || '저장하지 못했습니다.'),{code:result?.code}));
-      };
-      window.addEventListener('message',listener);
-      timeout=setTimeout(()=>{cleanup();reject(Error('저장 확인 응답을 받지 못했습니다. 미전송 기록은 이 컴퓨터에 보관했습니다. 다시 보내기를 눌러 확인해주세요.'));},45000);
-      document.body.append(frame,form); form.submit();
-    });
-  }
-  async function refresh() {
-    if (!configured() || busy || loading || draft) return;
-    loading=true;
-    try {
-      const result=await readRemote();valid(result.data);
-      const changed=!server || result.revision !== server.revision;
-      server=result; conflict=false;
-      if(changed) notify();
-      show(result.revision ? '공용 기록 연결됨 · '+new Date(result.savedAt).toLocaleString('ko-KR') : '공용 저장소가 비어 있습니다. 관리자 로그인 후 학교 기록을 가져오세요.','ok');
-    } catch(e) { show(e.message,'error'); }
-    finally { loading=false;paint(); }
-  }
-  function persistDraft() {
-    try { localStorage.setItem(draftKey,JSON.stringify(draft));return true; }
-    catch { show('이 브라우저에 복구용 기록을 보관할 수 없어 전송을 중단했습니다. 전체 백업을 내려받아 주세요.','error');conflict=true;return false; }
-  }
-  function change(data) {
-    if (!server || equal(data,server.data) || (draft && equal(data,draft.data))) return;
-    if (!canEdit()) { notify();return; }
-    valid(data);
-    draft={revision:server.revision,requestId:id(),data:copy(data)};
-    if(!persistDraft()) return;
-    show('공용 저장 대기 중 · 창을 닫지 마세요.');clearTimeout(timer);timer=setTimeout(save,500);
-  }
-  async function save() {
-    if (!draft || busy || !configured()) return;
-    if(!token) { show('미전송 기록을 보내려면 관리자 로그인해주세요.','error');return; }
-    busy=true;paint();show('공용 저장 중 · 창을 닫지 마세요.');
-    const sending=copy(draft);
-    try {
-      const result=await post({action:'commit',token,...sending});
-      server={...result,data:sending.data};draft=null;conflict=false;
-      try {localStorage.removeItem(draftKey);} catch { /* 다음 접속 시 요청 ID로 중복 저장 방지 */ }
-      notify(); show('공용 저장 완료 · '+new Date(result.savedAt).toLocaleTimeString('ko-KR'),'ok');
-    } catch(e) {
-      conflict=true;
-      if(e.code==='AUTH') {token='';try{sessionStorage.removeItem(sessionKey);}catch{}window.dispatchEvent(new Event('muan-auth-expired'));}
-      show(e.message,'error');
-    } finally { busy=false;paint(); }
-  }
-  async function login(password) {
-    if(!configured()) throw Error('Apps Script 배포 주소를 먼저 연결해주세요.');
-    if(location.origin!=='https://seungmin999.github.io') throw Error('수정은 기존 GitHub Pages 웹앱 주소에서 해주세요. 이 파일은 백업 확인용으로 사용할 수 있습니다.');
-    const result=await post({action:'login',password});token=result.token;
-    try{sessionStorage.setItem(sessionKey,token);}catch{}
-    paint();if(!server && !draft) await refresh();return true;
-  }
-  function download(data,name) {
-    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}), link=document.createElement('a');
-    link.href=URL.createObjectURL(blob);link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
-  }
-  function backup() {
-    const data=draft?.data || server?.data || legacy();
-    download({format:'muan-grade4-backup-v1',savedAt:new Date().toISOString(),data},'무안초_4학년_전체백업_'+Date.now()+'.json');
-  }
-  function legacy() {
-    const data=empty();fields.forEach((field,i)=>{const value=readLocal(legacyKeys[i]);if(value) data[field]=JSON.parse(value);});
-    if(!readLocal(legacyKeys[1])) for(const [date,values] of Object.entries(data.hours)) data.completion[date]=Object.fromEntries(Object.keys(values).map(k=>[k,true]));
-    return valid(data);
-  }
-  function importData(data) {
-    if(!canEdit()) throw Error('공용 저장소 연결과 관리자 로그인을 먼저 확인해주세요.');
-    valid(data);
-    if(!confirm('선택한 기록으로 공용 기록 전체를 교체할까요? 현재 공용 기록의 백업 파일도 내려받습니다.'))return;
-    backup();change(data);if(apply)apply(copy(data));
-  }
-  async function loadLatest() {
-    if(!confirm('미전송 기록은 백업 파일로 내려받고, 화면은 공용 최신 기록으로 바꿀까요?'))return;
-    backup();loading=true;paint();
-    try {
-      const result=await readRemote();valid(result.data);server=result;draft=null;conflict=false;
-      localStorage.removeItem(draftKey);notify();show('공용 최신 기록을 불러왔습니다.','ok');
-    } catch(e){show(e.message,'error');}finally{loading=false;paint();}
-  }
-  function mount() {
-    bar=document.createElement('section');bar.className='cloudBar';bar.hidden=true;bar.setAttribute('aria-label','공용 저장 상태');
-    status=document.createElement('p');status.setAttribute('role','status');bar.append(status);
-    actions=document.createElement('div');actions.className='cloudActions';actions.hidden=true;bar.append(actions);
-    function button(text,fn){const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=()=>Promise.resolve().then(fn).catch(e=>show(e.message,'error'));actions.append(b);return b;}
-    retryButton=button('새로 확인',()=>draft?save():refresh());
-    loadButton=button('최신 기록 불러오기',loadLatest);
-    button('전체 백업',backup);
-    button('이 컴퓨터의 예전 기록 백업',()=>download({format:'muan-grade4-backup-v1',data:legacy()},'무안초_학교기록_백업_'+Date.now()+'.json'));
-    importButton=button('백업 파일 가져오기',()=>fileInput.click());
-    legacyButton=button('이 컴퓨터의 예전 기록 가져오기',()=>{
-      const data=legacy();if(!fields.some(f=>Object.keys(data[f]).length)) throw Error('이 브라우저에는 예전 입력 기록이 없습니다. 학교에서 사용한 브라우저에서 실행해주세요.');importData(data);
-    });
-    fileInput=document.createElement('input');fileInput.type='file';fileInput.accept='.json,application/json';fileInput.hidden=true;
-    fileInput.onchange=async()=>{try{const file=fileInput.files[0];if(!file)return;if(file.size>2000000)throw Error('백업 파일이 너무 큽니다.');const saved=JSON.parse(await file.text());if(saved.format!=='muan-grade4-backup-v1')throw Error('전체 백업 JSON 파일을 선택해주세요.');importData(saved.data);}catch(e){show(e.message,'error');}finally{fileInput.value='';}};
-    bar.append(fileInput);document.body.insertBefore(bar,document.getElementById('root'));
-    if(!configured()) show('공용 저장소 미연결 · Apps Script 배포 주소를 설정해야 공유됩니다. 기존 기록은 예전 기록 백업으로 보관할 수 있습니다.');else paint();
-    // 저장 중 추가 수정을 막아 응답 이후의 변경이 사라지는 것을 방지합니다.
-    ['click','keydown','pointerdown','drop','input','change','submit'].forEach(type=>document.addEventListener(type,e=>{
-      if(!e.target.closest?.('#root') || e.target.closest('.loginModal') || e.target.closest('.adminButton'))return;
-      // 월 이동은 저장 데이터를 바꾸지 않으므로 통신 상태와 관계없이 허용합니다.
-      if(e.target.closest('.calendarHead button,.sideMonthButton'))return;
-      if(busy || loading || conflict && e.target.closest('form,.dateDrawer,.scheduleBlock,.eventBlock,.externalBlock,.actionMenu,.activityDetailModal')){e.preventDefault();e.stopImmediatePropagation();}
-    },true));
-    window.addEventListener('beforeunload',e=>{if(draft || busy){e.preventDefault();e.returnValue='';}});
-    window.addEventListener('online',()=>{if(!draft)refresh();});
-    window.setInterval(()=>{if(!document.hidden && !document.querySelector('.modalBackdrop,.dateDrawerBackdrop') && !draft)refresh();},60000);
-  }
-  window.MuanCloud={
-    setAdminMode(value){adminMode=!!value;paint();},
-    connect(fn){apply=fn;if(server)notify();else if(draft){try{apply(copy(valid(draft.data)));}catch(e){show(e.message,'error');}}else refresh();return()=>{apply=null;};},change,login,
-    logout(){const old=token;token='';adminMode=false;try{sessionStorage.removeItem(sessionKey);}catch{}if(old)post({action:'logout',token:old}).catch(()=>{});paint();},
-    authMessage(message){show(message,'error');},canEdit,valid
-  };
-  document.addEventListener('DOMContentLoaded',mount);
+ 'use strict';
+ const config = window.MUAN_FIREBASE_CONFIG || {};
+ const CDN = 'https://www.gstatic.com/firebasejs/11.10.0/';
+ const fields=['hours','completion','schedule','events','external'];
+ const legacyKeys=['muan-grade4-subject-hours-v1','muan-grade4-completion-overrides-v1','muan-grade4-schedule-overrides-v1','muan-grade4-events-v1','muan-grade4-external-education-v1'];
+ const draftKey='muan-grade4-firebase-draft-v1';
+ const clone=x=>JSON.parse(JSON.stringify(x));
+ const empty=()=>({hours:{},completion:{},schedule:{},events:{},external:{}});
+ const uid=()=>crypto.randomUUID().replaceAll('-','');
+ let api,db,auth,state=null,apply=null,draft=null,adminMode=false,loading=false,busy=false,conflict=false,ready=false;
+ let status,bar,actions,importInput,csvInput,importBtn,retryBtn,latestBtn;
+ let initialMessage='Firebase 연결 준비 중',initialKind='warning';
+ try {draft=JSON.parse(localStorage.getItem(draftKey)||'null');conflict=!!draft;}catch{conflict=true;initialMessage='보관된 미전송 기록을 해석할 수 없습니다. 로컬 저장소를 확인하세요.';}
+ function valid(data){
+   if(!data||typeof data!=='object'||Array.isArray(data)||Object.keys(data).length!==5||JSON.stringify(data).length>700000)throw Error('데이터 크기 또는 백업 구조가 올바르지 않습니다(최대 700KB).');
+   for(const field of fields){
+     const group=data[field];if(!group||typeof group!=='object'||Array.isArray(group))throw Error('백업 항목이 누락되었습니다: '+field);
+     for(const [date,value] of Object.entries(group)){
+       if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<'2026-08-21'||date>'2027-01-08')throw Error('학기 범위 밖 날짜: '+date);
+       if(field==='hours'||field==='completion'){
+         if(!value||typeof value!=='object'||Array.isArray(value))throw Error('시수 자료 형식 오류');
+         for(const [key,v] of Object.entries(value)) if(!/^4-[1-4]\|(체육|영어|사회)$/.test(key)||(field==='hours'?(!Number.isInteger(v)||v<0||v>1000):typeof v!=='boolean'))throw Error('시수 값 오류');
+       }else{
+         if(!Array.isArray(value)||value.length>200)throw Error('일정 배열 형식 오류');
+         for(const item of value){
+           if(!item||typeof item!=='object'||Array.isArray(item))throw Error('일정 값 오류');
+           if(field==='schedule'){
+             if(!/^4-[1-4]$/.test(item.cls)||!['체육','영어','사회'].includes(item.subject)||!Number.isInteger(item.period)||item.period<1||item.period>6)throw Error('시간표 형식 오류');
+           }else{
+             if(typeof item.id!=='string'||!item.id||typeof item.title!=='string'||!item.title.trim()||item.title.length>500)throw Error('행사 형식 오류');
+             if(field==='external'&&(!Number.isInteger(item.period)||item.period<1||item.period>6||!Array.isArray(item.classes)||!item.classes.length||item.classes.some(c=>!/^4-[1-4]$/.test(c))))throw Error('외부 교육 형식 오류');
+           }
+         }
+       }
+     }
+   }
+   return data;
+ }
+ function configured(){return config.apiKey && !config.apiKey.startsWith('REPLACE_') && config.projectId && !config.projectId.startsWith('REPLACE_');}
+ function canEdit(){return !!(ready&&auth?.currentUser&&adminMode&&state&&!busy&&!loading&&!conflict);}
+ function show(msg,kind='warning'){initialMessage=msg;initialKind=kind;paint();}
+ function paint(){if(!status)return;bar.hidden=!adminMode&&initialKind!=='error';actions.hidden=!adminMode;status.textContent=initialMessage;status.dataset.kind=initialKind;importBtn.disabled=!canEdit();retryBtn.disabled=busy||loading;latestBtn.hidden=!draft;latestBtn.disabled=busy||loading;}
+ function notify(){if(apply&&state)apply(clone(state.data));}
+ function filename(prefix){return prefix+'_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';}
+ function download(payload,name){let url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);}
+ function backup(){const data=draft?.data||state?.data||legacy();download({format:'muan-grade4-backup-v1',revision:state?.revision||0,savedAt:new Date().toISOString(),data},filename('무안초_4학년_기록백업'));}
+ function legacy(){const o=empty();fields.forEach((f,i)=>{const v=localStorage.getItem(legacyKeys[i]);if(v)o[f]=JSON.parse(v);});if(!localStorage.getItem(legacyKeys[1]))for(const [d,v] of Object.entries(o.hours))o.completion[d]=Object.fromEntries(Object.keys(v).map(k=>[k,true]));return valid(o);}
+ async function init(){
+   if(!configured()){show('firebase-config.js의 설정을 먼저 입력하세요.','error');return;}
+   try{
+     const [app,fire,au]=await Promise.all([import(CDN+'firebase-app.js'),import(CDN+'firebase-firestore.js'),import(CDN+'firebase-auth.js')]);
+     const instance=app.initializeApp(config);db=fire.getFirestore(instance);auth=au.getAuth(instance);api={...fire,...au};
+     await au.setPersistence(auth,au.browserSessionPersistence);
+     ready=true;
+     au.onAuthStateChanged(auth,()=>paint());
+     await refresh();
+   }catch(e){show('Firebase 초기화 실패: '+e.message,'error');}
+ }
+ async function refresh(){
+   if(!ready||busy||loading||draft)return;
+   loading=true;paint();
+   try{
+     const snap=await api.getDoc(api.doc(db,'muanGrade4','state'));
+     if(!snap.exists()){state=null;show('공용 데이터가 비어 있습니다. 관리자 Google 로그인 후 기존 시트 기록을 가져오세요.');}
+     else{const s=snap.data();valid(s.data);const changed=!state||state.revision!==s.revision;state={revision:s.revision,data:clone(s.data),savedAt:s.savedAt?.toDate?.()?.toISOString()||''};conflict=false;if(changed)notify();show('Firebase 연결됨 · 수정본 '+s.revision,'ok');}
+   }catch(e){show('조회 오류: '+e.message,'error');}
+   finally{loading=false;paint();}
+ }
+ async function login(){
+   if(!ready)throw Error('Firebase 초기화가 되지 않았습니다.');
+   if(location.origin!=='https://seungmin999.github.io')throw Error('관리자 로그인은 원래 GitHub Pages 주소에서만 가능합니다.');
+   const provider=new api.GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account'});
+   try{await api.signInWithPopup(auth,provider);}catch(e){throw Error('Google 로그인 실패: '+e.message);}
+   // UI 로그인 상태는 서버 보안 규칙 권한과 별개. 최초 실제 수정 전 트랜잭션에서 재검증됩니다.
+   try{await api.getDocs(api.query(api.collection(db,'muanGrade4Backups'),api.limit(1)));}
+   catch(e){await api.signOut(auth);throw Error('관리자 UID가 Firestore 규칙에 허용되지 않았습니다. 관리자 UID 설정을 확인하세요. '+e.message);}
+   if(!state&&!draft)await refresh();return true;
+ }
+ async function save(){
+   if(!draft||busy||!ready||!auth.currentUser)return;
+   busy=true;paint();show('Firebase 트랜잭션 저장 중…');
+   const sending=clone(draft);
+   try{
+     const ref=api.doc(db,'muanGrade4','state');
+     await api.runTransaction(db,async tx=>{
+       const snap=await tx.get(ref);const revision=snap.exists()?snap.data().revision:0;
+       if(revision!==sending.revision)throw Object.assign(new Error('다른 기기에서 먼저 수정했습니다. 미전송 기록을 백업하고 충돌을 해결하세요.'),{code:'CONFLICT'});
+       const next=revision+1, record={revision:next,data:sending.data,savedAt:api.serverTimestamp(),requestId:sending.requestId};
+       tx.set(ref,record);tx.create?tx.create(api.doc(db,'muanGrade4Backups','r'+next),record):tx.set(api.doc(db,'muanGrade4Backups','r'+next),record);
+     });
+     const savedRevision=sending.revision+1;state={revision:savedRevision,data:clone(sending.data)};
+     if(draft?.requestId===sending.requestId){draft=null;localStorage.removeItem(draftKey);conflict=false;}
+     notify();show('저장 완료 · 버전 '+savedRevision,'ok');
+   }catch(e){conflict=true;show('저장되지 않았습니다: '+e.message,'error');}
+   finally{busy=false;paint();}
+ }
+ let timer;
+ function change(data){
+   if(!state||JSON.stringify(state.data)===JSON.stringify(data)||draft&&JSON.stringify(draft.data)===JSON.stringify(data))return;
+   if(!canEdit()){notify();return;}
+   valid(data);draft={revision:state.revision,requestId:uid(),data:clone(data)};
+   try{localStorage.setItem(draftKey,JSON.stringify(draft));}catch{draft=null;show('미전송 기록을 보호할 수 없어 저장을 중단했습니다.','error');notify();return;}
+   clearTimeout(timer);timer=setTimeout(save,500);show('임시 저장 완료 · 서버 전송 대기');
+ }
+ async function latest(){
+   if(!confirm('미전송 내용을 JSON으로 백업한 후 Firebase 최신 기록을 불러옵니다. 계속할까요?'))return;
+   backup();draft=null;localStorage.removeItem(draftKey);conflict=false;await refresh();
+ }
+ async function importData(data){
+   valid(data);
+   if(!ready||!auth.currentUser||!adminMode||busy)throw Error('관리자로 먼저 로그인하세요.');
+   if(draft)throw Error('미전송 기록을 먼저 해결하세요.');
+   if(!confirm('기존 공용 데이터를 백업한 후 가져온 기록으로 대체할까요?'))return;
+   backup();
+   // 가져오기 시에는 기존 서버 상태를 수정하지 않고 트랜잭션의 최신 revision을 검증
+   const revision=state?.revision||0;
+   draft={revision,requestId:uid(),data:clone(data)};localStorage.setItem(draftKey,JSON.stringify(draft));await save();
+ }
+ // CSV는 Google Sheets > 파일 > 다운로드 > 쉼표로 구분된 값(.csv) (revision,request,part,parts,data,savedAt)
+ function parseCSV(src){
+   src=src.replace(/^\uFEFF/,'');const rows=[];let row=[],v='',quoted=false;
+   for(let i=0;i<src.length;i++){const c=src[i];if(quoted){if(c==='"'&&src[i+1]==='"'){v+='"';i++;}else if(c==='"')quoted=false;else v+=c;}
+     else if(c==='"')quoted=true;else if(c===','){row.push(v);v='';}else if(c==='\n'){row.push(v.replace(/\r$/,''));rows.push(row);row=[];v='';}else v+=c;}
+   if(v||row.length){row.push(v);rows.push(row);}if(quoted)throw Error('CSV 인용부호가 닫히지 않았습니다.');return rows;
+ }
+ function fromSheetCSV(src){
+   const rows=parseCSV(src),header=rows.shift()?.map(s=>s.trim())||[];
+   for(const f of ['revision','part','parts','data'])if(!header.includes(f))throw Error('시트 열이 없습니다: '+f);
+   const i=Object.fromEntries(header.map((s,j)=>[s,j]));const group=new Map();
+   for(const r of rows){const rev=Number(r[i.revision]),part=Number(r[i.part]),total=Number(r[i.parts]);if(!Number.isInteger(rev)||rev<1||!Number.isInteger(part)||!Number.isInteger(total)||total<1||total>100||part<0||part>=total)continue;
+     if(!group.has(rev))group.set(rev,{total,parts:new Map()});const g=group.get(rev);if(g.total!==total)continue;g.parts.set(part,r[i.data]||'');}
+   for(const rev of [...group.keys()].sort((a,b)=>b-a)){
+     const g=group.get(rev);if(g.parts.size!==g.total)continue;
+     try{let value=JSON.parse(Array.from({length:g.total},(_,j)=>g.parts.get(j)).join(''));if(value?.data && !value.hours)value=value.data;valid(value);return {revision:rev,data:value};}catch{}
+   }
+   throw Error('복원할 수 있는 완전한 revision을 찾지 못했습니다. 원본 시트의 data 열을 확인하세요.');
+ }
+ function inputFile(accept,onFile){const inp=document.createElement('input');inp.type='file';inp.accept=accept;inp.hidden=true;inp.onchange=async()=>{try{const f=inp.files[0];if(f)await onFile(f);}catch(e){show(e.message,'error');}finally{inp.value='';}};bar.append(inp);return inp;}
+ function mount(){
+   bar=document.createElement('section');bar.className='cloudBar';bar.setAttribute('aria-label','Firebase 공용 기록');
+   status=document.createElement('p');status.setAttribute('role','status');bar.append(status);
+   actions=document.createElement('div');actions.className='cloudActions';bar.append(actions);
+   function button(text,cb){const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=()=>Promise.resolve().then(cb).catch(e=>show(e.message,'error'));actions.append(b);return b;}
+   retryBtn=button('다시 연결 / 미전송 기록 전송',()=>draft?save():refresh());latestBtn=button('최신 기록 불러오기',latest);
+   button('전체 JSON 백업',backup);
+   button('이 컴퓨터 예전 기록 백업',()=>download({format:'muan-grade4-backup-v1',data:legacy()},filename('무안초_예전기록')));
+   importBtn=button('JSON 기록 가져오기',()=>importInput.click());
+   button('Google Sheets CSV 가져오기',()=>csvInput.click());
+   importInput=inputFile('.json,application/json',async f=>{const j=JSON.parse(await f.text());if(j.format!=='muan-grade4-backup-v1')throw Error('무안초 전체 백업 JSON만 지원합니다.');await importData(j.data);});
+   csvInput=inputFile('.csv,text/csv',async f=>{if(!auth?.currentUser||!adminMode)throw Error('관리자로 먼저 로그인하세요.');const r=fromSheetCSV(await f.text());if(!confirm('시트에서 가장 최신의 완전한 revision '+r.revision+'을 찾았습니다. 가져올까요?'))return;await importData(r.data);});
+   document.body.insertBefore(bar,document.getElementById('root'));paint();init();
+   window.addEventListener('beforeunload',e=>{if(draft||busy){e.preventDefault();e.returnValue='';}});
+   window.addEventListener('online',()=>{if(!draft)refresh();});
+   setInterval(()=>{if(!document.hidden&&!document.querySelector('.modalBackdrop,.dateDrawerBackdrop')&&!draft)refresh();},60000);
+   // 서버가 확인될 때까지 변경 이벤트 차단(조회 및 월 이동은 유지)
+   ['click','keydown','pointerdown','drop','input','change','submit'].forEach(type=>document.addEventListener(type,e=>{
+     if(!e.target.closest?.('#root')||e.target.closest('.loginModal')||e.target.closest('.adminButton'))return;
+     if(e.target.closest('.calendarHead button,.sideMonthButton'))return;
+     if(busy||loading||conflict&&e.target.closest('form,.dateDrawer,.scheduleBlock,.eventBlock,.externalBlock,.actionMenu,.activityDetailModal')){e.preventDefault();e.stopImmediatePropagation();}
+   },true));
+ }
+ window.MuanCloud={
+  setAdminMode(v){adminMode=!!v;paint();},
+  connect(fn){apply=fn;if(state)notify();return()=>{apply=null;};},
+  change,login,logout(){adminMode=false;if(auth)api.signOut(auth).catch(e=>show('로그아웃 오류: '+e.message,'error'));paint();},
+  authMessage(m){show(m,'error');},canEdit,valid
+ };
+ document.addEventListener('DOMContentLoaded',mount);
 })();
