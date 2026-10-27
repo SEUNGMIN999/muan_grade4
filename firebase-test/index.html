@@ -505,10 +505,10 @@ Error generating stack: `+e.message+`
  .calendarHead button{flex:0 0 35px!important;width:35px!important;height:35px!important}
  .calendarPanel>.weekdays,.calendarPanel>.calendarGrid{display:none!important}
  .muanMobileMonth{display:block!important;width:100%;padding:0 1px 2px;background:#fff}
- .muanMobileWeekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));background:#f5f8f6;border-top:1px solid #e5eeea;border-bottom:1px solid #e5eeea}
+ .muanMobileWeekdays{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));background:#f5f8f6;border-top:1px solid #e5eeea;border-bottom:1px solid #e5eeea}
  .muanMobileWeekdays span{text-align:center;font-size:11px;font-weight:800;padding:9px 0;color:#52655c}
- .muanMobileWeekdays span:first-child{color:#d95151}.muanMobileWeekdays span:last-child{color:#4c75c9}
- .muanMobileGrid{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr))!important;grid-auto-rows:minmax(60px,auto);gap:1px!important;background:#e5eee9!important}
+ .muanMobileWeekdays span:first-child{color:#52655c}.muanMobileWeekdays span:last-child{color:#52655c}
+ .muanMobileGrid{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;grid-auto-rows:minmax(60px,auto);gap:1px!important;background:#e5eee9!important}
  .muanMobileDay{min-width:0;min-height:63px;box-sizing:border-box;border:0;border-radius:0;background:#fff;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px 3px;cursor:pointer;text-align:center;color:#273b33;-webkit-tap-highlight-color:transparent}
  .muanMobileDay.is-outside{background:#f7f9f8;pointer-events:none}
  .muanMobileDay.is-weekend{background:#fbfcfb}
@@ -554,23 +554,26 @@ Error generating stack: `+e.message+`
     const signature=title+'|'+[...originals].map(([d,node])=>d+':'+node.className+':'+node.innerText).join('|');
     if(signature===lastSignature&&panel.querySelector('.muanMobileMonth'))return;
     lastSignature=signature;
-    const first=new Date(year,month-1,1).getDay();
     const days=new Date(year,month,0).getDate();
-    const count=Math.ceil((first+days)/7)*7;
+    const firstWeekday=new Date(year,month-1,1).getDay();
+    const firstOffset=(firstWeekday+6)%7; // 월요일 0, 금요일 4
     const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
     let cells='';
-    for(let idx=0;idx<count;idx++){
-      const d=idx-first+1;
-      if(d<1||d>days){cells+='<span class="muanMobileDay is-outside" aria-hidden="true"></span>';continue;}
+    for(let i=0;i<firstOffset&&i<5;i++){cells+='<span class="muanMobileDay is-outside" aria-hidden="true"></span>';}
+    let weekdayCells=firstOffset<5?firstOffset:0;
+    for(let d=1;d<=days;d++){
+      const weekday=new Date(year,month-1,d).getDay();
+      if(weekday===0||weekday===6)continue; // 토·일 제외
+      if(weekdayCells===5){weekdayCells=0;}
+      weekdayCells++;
       const date=year+'-'+String(month).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-      const weekday=idx%7,original=originals.get(d);
+      const original=originals.get(d);
       const holiday=original?.querySelector('.holidayBadge,.noClassEvent')?.textContent?.trim()||'';
       const blocks=original?[...original.querySelectorAll('.scheduleBlock,.externalBlock')]:[];
       const types=[];
       blocks.forEach(b=>{const t=b.textContent||'';const k=b.classList.contains('externalBlock')?'external':t.includes('체육')?'pe':t.includes('영어')?'english':t.includes('사회')?'social':'pe';if(!types.includes(k))types.push(k);});
       const otherEvents=original?.querySelectorAll('.eventBlock:not(.noClassEvent)').length||0;
       const cls=['muanMobileDay'];
-      if(weekday===0||weekday===6)cls.push('is-weekend',weekday===0?'is-sunday':'is-saturday');
       if(today===date)cls.push('is-today');
       if(holiday)cls.push('is-holiday');
       const bars=types.slice(0,3).map(k=>'<i class="muanMobileBar '+k+'"></i>').join('');
@@ -579,7 +582,7 @@ Error generating stack: `+e.message+`
     }
     let mini=panel.querySelector('.muanMobileMonth');
     if(!mini){mini=document.createElement('section');mini.className='muanMobileMonth';mini.setAttribute('aria-label','모바일 월간 달력');grid.after(mini);mini.addEventListener('click',e=>{const btn=e.target.closest('[data-muan-day]');if(!btn)return;const n=Number(btn.dataset.muanDay);const day=[...panel.querySelectorAll('.calendarGrid .day:not(.blank)')].find(el=>{const a=el.querySelector('.dateButton')?.getAttribute('aria-label')||'';return a.includes(n+'일')&&a.includes((panel.querySelector('.calendarHead h2')?.textContent.match(/\d+년\s*(\d+)월/)?.[1]||month)+'월');});day?.querySelector('.dateButton')?.click();});}
-    mini.innerHTML='<div class="muanMobileWeekdays"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div><div class="muanMobileGrid">'+cells+'</div><div class="muanMobileLegend"><span><i style="background:#15a087"></i>체육</span><span><i style="background:#e98552"></i>영어</span><span><i style="background:#677cf0"></i>사회</span><span><i style="background:#ca5261"></i>외부교육</span></div>';
+    mini.innerHTML='<div class="muanMobileWeekdays"><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span></div><div class="muanMobileGrid">'+cells+'</div><div class="muanMobileLegend"><span><i style="background:#15a087"></i>체육</span><span><i style="background:#e98552"></i>영어</span><span><i style="background:#677cf0"></i>사회</span><span><i style="background:#ca5261"></i>외부교육</span></div>';
   }
   function schedule(){if(queued)return;queued=true;requestAnimationFrame(render);}
   new MutationObserver(schedule).observe(root,{childList:true,subtree:true,characterData:true});
