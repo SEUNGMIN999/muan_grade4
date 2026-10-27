@@ -485,5 +485,106 @@ Error generating stack: `+e.message+`
 })();
 </script>
 
+
+<style id="muan-mobile-calendar-v2">
+@media (max-width:760px){
+ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}
+ .shell{padding:12px 10px 35px!important}
+ .header{padding:12px 14px!important;gap:10px!important}
+ .brandMark{width:42px!important;height:42px!important;border-radius:13px!important;font-size:11px!important}
+ .brand h1{font-size:17px!important;line-height:1.25!important}
+ .brand p{font-size:10px!important}
+ .headerActions{display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;gap:6px!important;width:100%!important}
+ .headerActions>button,.headerActions>.actionMenu,.headerActions>.adminButton{flex:1!important;min-width:0!important}
+ .headerActions>button{padding:9px 6px!important;font-size:11px!important;min-height:40px!important}
+ .mobileSummaryToggle{min-height:39px!important;margin:4px 0 10px!important;padding:9px 12px!important;font-size:13px!important}
+ .calendarPanel{border-radius:16px!important;overflow:hidden!important}
+ .calendarHead{padding:12px 8px!important;gap:9px!important;min-height:76px!important}
+ .calendarHead h2{font-size:20px!important;margin:0!important;white-space:nowrap}
+ .calendarHead p{font-size:10px!important;margin:3px 0 0!important;max-width:190px}
+ .calendarHead button{flex:0 0 35px!important;width:35px!important;height:35px!important}
+ .calendarPanel>.weekdays,.calendarPanel>.calendarGrid{display:none!important}
+ .muanMobileMonth{display:block!important;width:100%;padding:0 1px 2px;background:#fff}
+ .muanMobileWeekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));background:#f5f8f6;border-top:1px solid #e5eeea;border-bottom:1px solid #e5eeea}
+ .muanMobileWeekdays span{text-align:center;font-size:11px;font-weight:800;padding:9px 0;color:#52655c}
+ .muanMobileWeekdays span:first-child{color:#d95151}.muanMobileWeekdays span:last-child{color:#4c75c9}
+ .muanMobileGrid{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr))!important;grid-auto-rows:minmax(60px,auto);gap:1px!important;background:#e5eee9!important}
+ .muanMobileDay{min-width:0;min-height:63px;box-sizing:border-box;border:0;border-radius:0;background:#fff;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px 3px;cursor:pointer;text-align:center;color:#273b33;-webkit-tap-highlight-color:transparent}
+ .muanMobileDay.is-outside{background:#f7f9f8;pointer-events:none}
+ .muanMobileDay.is-weekend{background:#fbfcfb}
+ .muanMobileDay.is-sunday .muanMobileDate{color:#d84e4e}
+ .muanMobileDay.is-saturday .muanMobileDate{color:#5174bd}
+ .muanMobileDay.is-today{background:#eaf7ef;box-shadow:inset 0 0 0 2px #10906f}
+ .muanMobileDate{font-size:13px;line-height:21px;height:21px;min-width:21px;font-weight:800}
+ .muanMobileDay.is-today .muanMobileDate{border-radius:12px;background:#11836d;color:#fff;padding:0 4px}
+ .muanMobileBars{display:flex;flex-direction:column;gap:2px;width:78%;max-width:32px;min-height:3px;align-items:stretch}
+ .muanMobileBar{height:4px;border-radius:3px;width:100%;background:#15a087}
+ .muanMobileBar.english{background:#e98552}.muanMobileBar.social{background:#677cf0}.muanMobileBar.external{background:#ca5261}
+ .muanMobileDay.is-holiday{background:#fff1f0}
+ .muanMobileHoliday{max-width:100%;font-size:8px;color:#ba3f42;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .muanMobileEventDot{font-size:8px;color:#a56c21;line-height:1}
+ .muanMobileLegend{display:flex;flex-wrap:wrap;justify-content:center;gap:7px 11px;padding:10px 5px;background:#fff;color:#63716b;font-size:10px}
+ .muanMobileLegend i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;vertical-align:middle}
+ .muanMobileMonth:focus-within .muanMobileDay:focus-visible{outline:2px solid #066c59;outline-offset:-2px}
+ .dateDrawer{width:100%!important;max-width:100%!important;height:85dvh!important;max-height:85dvh!important;align-self:flex-end!important;border-radius:20px 20px 0 0!important;padding:20px 14px!important}
+ .dateDrawerBackdrop{align-items:flex-end!important}
+}
+</style>
+
+<script id="muan-mobile-calendar-engine-v2">
+(()=>{
+  const root=document.getElementById('root');
+  if(!root)return;
+  const escapeHtml=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let lastSignature='',queued=false;
+  function render(){
+    queued=false;
+    const panel=root.querySelector('.calendarPanel');
+    const title=panel?.querySelector('.calendarHead h2')?.textContent||'';
+    const m=title.match(/(\d{4})년\s*(\d{1,2})월/);
+    const grid=panel?.querySelector('.calendarGrid');
+    if(!m||!grid)return;
+    const year=Number(m[1]),month=Number(m[2]);
+    const originals=new Map();
+    grid.querySelectorAll('.day:not(.blank)').forEach(day=>{
+      const a=day.querySelector('.dateButton')?.getAttribute('aria-label')||'';
+      const dm=a.match(/(\d{1,2})월\s*(\d{1,2})일/);
+      if(dm&&Number(dm[1])===month) originals.set(Number(dm[2]),day);
+    });
+    const signature=title+'|'+[...originals].map(([d,node])=>d+':'+node.className+':'+node.innerText).join('|');
+    if(signature===lastSignature&&panel.querySelector('.muanMobileMonth'))return;
+    lastSignature=signature;
+    const first=new Date(year,month-1,1).getDay();
+    const days=new Date(year,month,0).getDate();
+    const count=Math.ceil((first+days)/7)*7;
+    const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    let cells='';
+    for(let idx=0;idx<count;idx++){
+      const d=idx-first+1;
+      if(d<1||d>days){cells+='<span class="muanMobileDay is-outside" aria-hidden="true"></span>';continue;}
+      const date=year+'-'+String(month).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+      const weekday=idx%7,original=originals.get(d);
+      const holiday=original?.querySelector('.holidayBadge,.noClassEvent')?.textContent?.trim()||'';
+      const blocks=original?[...original.querySelectorAll('.scheduleBlock,.externalBlock')]:[];
+      const types=[];
+      blocks.forEach(b=>{const t=b.textContent||'';const k=b.classList.contains('externalBlock')?'external':t.includes('체육')?'pe':t.includes('영어')?'english':t.includes('사회')?'social':'pe';if(!types.includes(k))types.push(k);});
+      const otherEvents=original?.querySelectorAll('.eventBlock:not(.noClassEvent)').length||0;
+      const cls=['muanMobileDay'];
+      if(weekday===0||weekday===6)cls.push('is-weekend',weekday===0?'is-sunday':'is-saturday');
+      if(today===date)cls.push('is-today');
+      if(holiday)cls.push('is-holiday');
+      const bars=types.slice(0,3).map(k=>'<i class="muanMobileBar '+k+'"></i>').join('');
+      const label=month+'월 '+d+'일'+(holiday?', '+holiday:'')+(blocks.length?', 수업 '+blocks.length+'건':'')+', 상세 보기';
+      cells+='<button type="button" class="'+cls.join(' ')+'" data-muan-day="'+d+'" aria-label="'+escapeHtml(label)+'"><span class="muanMobileDate">'+d+'</span>'+(holiday?'<span class="muanMobileHoliday">'+escapeHtml(holiday)+'</span>':'')+'<span class="muanMobileBars" aria-hidden="true">'+bars+'</span>'+(otherEvents?'<span class="muanMobileEventDot" aria-hidden="true">● 행사</span>':'')+'</button>';
+    }
+    let mini=panel.querySelector('.muanMobileMonth');
+    if(!mini){mini=document.createElement('section');mini.className='muanMobileMonth';mini.setAttribute('aria-label','모바일 월간 달력');grid.after(mini);mini.addEventListener('click',e=>{const btn=e.target.closest('[data-muan-day]');if(!btn)return;const n=Number(btn.dataset.muanDay);const day=[...panel.querySelectorAll('.calendarGrid .day:not(.blank)')].find(el=>{const a=el.querySelector('.dateButton')?.getAttribute('aria-label')||'';return a.includes(n+'일')&&a.includes((panel.querySelector('.calendarHead h2')?.textContent.match(/\d+년\s*(\d+)월/)?.[1]||month)+'월');});day?.querySelector('.dateButton')?.click();});}
+    mini.innerHTML='<div class="muanMobileWeekdays"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div><div class="muanMobileGrid">'+cells+'</div><div class="muanMobileLegend"><span><i style="background:#15a087"></i>체육</span><span><i style="background:#e98552"></i>영어</span><span><i style="background:#677cf0"></i>사회</span><span><i style="background:#ca5261"></i>외부교육</span></div>';
+  }
+  function schedule(){if(queued)return;queued=true;requestAnimationFrame(render);}
+  new MutationObserver(schedule).observe(root,{childList:true,subtree:true,characterData:true});
+  schedule();
+})();
+</script>
 </body>
 </html>
