@@ -1,0 +1,8 @@
+.cloudBar{padding:12px 24px;background:#edf6ff;border-bottom:1px solid #b9cfe3;font:14px/1.5 system-ui,sans-serif;color:#214b68}.cloudBar p{margin:0 0 8px;font-weight:700}.cloudBar p[data-kind=error]{color:#a22232}.cloudBar p[data-kind=ok]{color:#08634f}.cloudActions{display:flex;flex-wrap:wrap;gap:8px}.cloudActions button{padding:7px 11px;border:1px solid #b7cad9;border-radius:7px;background:white;color:#214b68;font:inherit;cursor:pointer}.cloudActions button:disabled{opacity:.45;cursor:default}.cloudActions button[hidden]{display:none}@media(max-width:640px){.cloudBar{padding:10px}.cloudActions button{font-size:13px}}
+.cloudBar[hidden],.cloudActions[hidden]{display:none!important}
+/* 교담·행사·외부교육을 각진 직사각형으로 통일합니다. */
+#root .periodItems .scheduleBlock,#root .periodItems .externalBlock,#root .dateRow .eventBlock{border-radius:0!important}
+#root .copyBlockButton{display:block;width:100%;margin-top:10px;padding:12px;border:1px solid #126eae;border-radius:9px;color:#126eae;background:#edf6ff;font-weight:800;cursor:pointer}
+#root .copyModal{max-height:90vh;overflow:auto}
+#root .copyModal .copyHint{font-size:14px;line-height:1.6}
+#root .copyModal .copyError{font-size:14px;color:#b32635;background:#fff0f1;padding:10px;border-radius:8px}
